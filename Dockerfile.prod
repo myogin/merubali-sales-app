@@ -29,8 +29,11 @@ RUN docker-php-ext-configure intl \
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copy application files
+# Copy application files (excluding .env)
 COPY . /var/www/html
+
+# Remove .env if it exists (we'll use environment variables from EasyPanel)
+RUN rm -f .env
 
 # Install dependencies
 RUN composer install --no-dev --optimize-autoloader --no-interaction \
@@ -49,11 +52,14 @@ COPY docker/nginx/production.conf /etc/nginx/http.d/default.conf
 # Copy supervisor config
 COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Optimize Laravel
-RUN php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache
+# Create entrypoint script
+RUN echo '#!/bin/sh' > /entrypoint.sh && \
+    echo 'php artisan config:cache' >> /entrypoint.sh && \
+    echo 'php artisan route:cache' >> /entrypoint.sh && \
+    echo 'php artisan view:cache' >> /entrypoint.sh && \
+    echo 'exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf' >> /entrypoint.sh && \
+    chmod +x /entrypoint.sh
 
 EXPOSE 80
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+ENTRYPOINT ["/entrypoint.sh"]
